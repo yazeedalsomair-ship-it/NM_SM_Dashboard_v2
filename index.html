@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NM/SM Inventory Dashboard — Dr. Yazeed Alsomair</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0a0e1a; --surface:#111827; --surface2:#151f30; --surface3:#1a2740;
+  --border:#1e2d45; --border2:#243554;
+  --nm:#ef4444; --nm-s:rgba(239,68,68,.13); --nm-b:rgba(239,68,68,.25);
+  --sm:#f59e0b; --sm-s:rgba(245,158,11,.13); --sm-b:rgba(245,158,11,.25);
+  --ac:#10b981; --ac-s:rgba(16,185,129,.13);
+  --blue:#3b82f6; --blue-s:rgba(59,130,246,.1);
+  --text:#e2e8f0; --muted:#64748b; --dim:#94a3b8;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;
+  background-image:linear-gradient(rgba(59,130,246,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,.025) 1px,transparent 1px);
+  background-size:48px 48px;pointer-events:none;z-index:0}
+
+/* ── UPLOAD SCREEN ── */
+#upload-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:200;gap:28px;transition:opacity .5s,transform .5s}
+#upload-screen.out{opacity:0;pointer-events:none;transform:scale(.96)}
+
+.logo-mark{font-size:2rem;font-weight:800;letter-spacing:-1.5px;background:linear-gradient(135deg,#60a5fa,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center}
+.logo-sub{font-size:.78rem;font-family:'JetBrains Mono';color:var(--muted);text-align:center;margin-top:4px}
+
+/* threshold slider */
+.threshold-box{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:20px 28px;width:min(560px,90vw);text-align:center}
+.threshold-box label{font-size:.72rem;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:14px}
+.slider-row{display:flex;align-items:center;gap:14px}
+#thresh-slider{flex:1;-webkit-appearance:none;height:5px;border-radius:4px;background:linear-gradient(90deg,var(--nm) 0%,var(--sm) 50%,var(--ac) 100%);outline:none;cursor:pointer}
+#thresh-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 0 10px rgba(59,130,246,.5);cursor:pointer}
+#thresh-val{font-family:'JetBrains Mono';font-weight:700;font-size:1.2rem;color:var(--sm);min-width:50px}
+.thresh-hint{font-size:.7rem;color:var(--muted);margin-top:10px}
+
+.upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;width:min(560px,90vw)}
+.ucard{background:var(--surface);border:1.5px dashed var(--border2);border-radius:14px;padding:26px 20px;text-align:center;cursor:pointer;position:relative;overflow:hidden;transition:all .2s}
+.ucard:hover{border-color:var(--blue);background:var(--surface2)}
+.ucard.done{border-color:var(--ac);border-style:solid}
+.ucard.done::after{content:'✓';position:absolute;top:10px;right:13px;color:var(--ac);font-weight:700;font-size:1rem}
+.ucard input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.ucard-icon{font-size:2rem;margin-bottom:10px}
+.ucard h3{font-size:.8rem;font-weight:700;margin-bottom:5px}
+.ucard p{font-size:.68rem;color:var(--muted);font-family:'JetBrains Mono'}
+.ucard .fname{font-size:.68rem;color:var(--ac);margin-top:7px;font-family:'JetBrains Mono';word-break:break-all}
+
+.btn-go{background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;border:none;border-radius:12px;padding:13px 44px;font-size:.95rem;font-weight:700;font-family:'Sora';cursor:pointer;opacity:.35;pointer-events:none;transition:all .25s;letter-spacing:.3px}
+.btn-go.on{opacity:1;pointer-events:all;box-shadow:0 0 32px rgba(99,102,241,.45)}
+.btn-go.on:hover{transform:translateY(-2px);box-shadow:0 0 44px rgba(99,102,241,.65)}
+.credit{font-size:.68rem;color:#273044;font-family:'JetBrains Mono'}
+
+/* ── LOADER ── */
+#loader{display:none;position:fixed;inset:0;background:rgba(10,14,26,.88);z-index:300;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+#loader.on{display:flex}
+.spin{width:40px;height:40px;border:3px solid var(--border);border-top-color:#3b82f6;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loader-msg{font-family:'JetBrains Mono';color:var(--muted);font-size:.78rem}
+
+/* ── DASHBOARD ── */
+#dash{display:none;position:relative;z-index:1}
+#dash.on{display:block;animation:fadeUp .5s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+/* Header */
+.dh{background:linear-gradient(135deg,var(--surface) 0%,#0c1322 100%);border-bottom:1px solid var(--border);padding:16px 30px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;backdrop-filter:blur(8px)}
+.dh-title{font-size:1.1rem;font-weight:800;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-.5px}
+.dh-meta{font-size:.68rem;font-family:'JetBrains Mono';color:var(--muted);margin-top:3px}
+.dh-right{display:flex;gap:10px;align-items:center}
+.btn-sm{background:var(--surface2);border:1px solid var(--border);color:var(--dim);border-radius:8px;padding:6px 13px;font-size:.72rem;cursor:pointer;font-family:'Sora';transition:all .2s}
+.btn-sm:hover{border-color:var(--blue);color:var(--blue)}
+.thresh-badge{font-family:'JetBrains Mono';font-size:.7rem;background:var(--sm-s);border:1px solid var(--sm-b);color:var(--sm);border-radius:8px;padding:4px 10px}
+
+/* Main */
+.dm{padding:24px 30px;max-width:1440px;margin:0 auto}
+
+/* Section divider */
+.sdiv{display:flex;align-items:center;gap:12px;margin:24px 0 16px}
+.sdiv h2{font-size:.72rem;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1.5px;white-space:nowrap}
+.sdiv::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* KPI strip */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;position:relative;overflow:hidden;transition:transform .2s}
+.kpi:hover{transform:translateY(-2px)}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:14px 14px 0 0}
+.kpi.nm::before{background:var(--nm)}
+.kpi.sm::before{background:var(--sm)}
+.kpi.ac::before{background:var(--ac)}
+.kpi.bl::before{background:var(--blue)}
+.kpi-lbl{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px}
+.kpi-val{font-size:2.2rem;font-weight:800;font-family:'JetBrains Mono';line-height:1}
+.kpi.nm .kpi-val{color:var(--nm)} .kpi.sm .kpi-val{color:var(--sm)} .kpi.ac .kpi-val{color:var(--ac)} .kpi.bl .kpi-val{color:var(--blue)}
+.kpi-sub{font-size:.68rem;color:var(--muted);margin-top:5px;font-family:'JetBrains Mono'}
+.kpi-pct{position:absolute;top:18px;right:16px;font-size:.72rem;font-weight:700;font-family:'JetBrains Mono';padding:2px 7px;border-radius:6px}
+.kpi.nm .kpi-pct{background:var(--nm-s);color:var(--nm)} .kpi.sm .kpi-pct{background:var(--sm-s);color:var(--sm)} .kpi.ac .kpi-pct{background:var(--ac-s);color:var(--ac)}
+
+/* Charts */
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
+.chart-row.three{grid-template-columns:1fr 1fr 1fr}
+.ccard{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px}
+.ccard.wide{grid-column:1/-1}
+.ctitle{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-bottom:14px;display:flex;align-items:center;gap:7px}
+.ctitle i{display:inline-block;width:7px;height:7px;border-radius:50%}
+.cwrap{position:relative}
+
+/* Tables */
+.tbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
+.tbtn-group{display:flex;gap:8px;flex-wrap:wrap}
+.tbtn{background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:5px 11px;font-size:.68rem;cursor:pointer;font-family:'Sora';font-weight:600;transition:all .15s}
+.tbtn:hover{border-color:var(--blue);color:var(--blue)}
+.tbtn.on{border-color:var(--blue);color:var(--blue);background:var(--blue-s)}
+.tbtn.nm.on{border-color:var(--nm);color:var(--nm);background:var(--nm-s)}
+.tbtn.sm.on{border-color:var(--sm);color:var(--sm);background:var(--sm-s)}
+.tbtn.ac.on{border-color:var(--ac);color:var(--ac);background:var(--ac-s)}
+.srch{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 12px;font-size:.72rem;font-family:'Sora';width:200px;outline:none;transition:border-color .2s}
+.srch:focus{border-color:var(--blue)}
+.srch::placeholder{color:var(--muted)}
+.twrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:.72rem}
+thead th{background:var(--surface2);padding:10px 13px;text-align:left;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;font-size:.63rem;white-space:nowrap;border-bottom:1px solid var(--border)}
+tbody tr{border-bottom:1px solid rgba(30,45,69,.5);transition:background .1s}
+tbody tr:hover{background:rgba(59,130,246,.04)}
+td{padding:8px 13px;color:var(--dim);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.62rem;font-weight:700;font-family:'JetBrains Mono'}
+.b-nm{background:var(--nm-s);color:var(--nm)} .b-sm{background:var(--sm-s);color:var(--sm)} .b-ac{background:var(--ac-s);color:var(--ac)}
+.pgn{display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:12px}
+.pbtn{background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;font-size:.68rem;cursor:pointer;font-family:'JetBrains Mono';transition:all .15s}
+.pbtn:hover,.pbtn.cur{border-color:var(--blue);color:var(--blue)}
+.pinfo{font-size:.66rem;color:var(--muted);font-family:'JetBrains Mono'}
+
+/* Footer */
+.df{border-top:1px solid var(--border);padding:14px 30px;display:flex;justify-content:space-between;align-items:center;font-size:.67rem;color:var(--muted);font-family:'JetBrains Mono'}
+
+@media(max-width:860px){.kpi-row{grid-template-columns:1fr 1fr}.chart-row,.chart-row.three{grid-template-columns:1fr}.dm{padding:14px}}
+</style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader"><div class="spin"></div><span id="loader-msg">Reading files…</span></div>
+
+<!-- UPLOAD -->
+<div id="upload-screen">
+  <div>
+    <div class="logo-mark">⬡ Inventory Intelligence</div>
+    <div class="logo-sub">Non / Slow-Moving Dashboard — QHSE Division</div>
+  </div>
+
+  <div class="threshold-box">
+    <label>Slow-Moving Threshold — آخر حركة منذ أكثر من</label>
+    <div class="slider-row">
+      <span style="font-size:.68rem;color:var(--muted);font-family:'JetBrains Mono'">7d</span>
+      <input type="range" id="thresh-slider" min="7" max="180" step="1" value="30" oninput="document.getElementById('thresh-val').textContent=this.value+'d'">
+      <span style="font-size:.68rem;color:var(--muted);font-family:'JetBrains Mono'">180d</span>
+      <span id="thresh-val">30d</span>
+    </div>
+    <div class="thresh-hint">Non-Moving = لا توجد حركة إطلاقاً &nbsp;|&nbsp; Slow-Moving = آخر حركة > الحد المحدد</div>
+  </div>
+
+  <div class="upload-grid">
+    <div class="ucard" id="uc1">
+      <input type="file" id="f1" accept=".xlsx,.xls" onchange="onFile(1,this)">
+      <div class="ucard-icon">📦</div>
+      <h3>Stock File</h3>
+      <p>BY_system / INV_STATUS</p>
+      <div class="fname" id="fn1"></div>
+    </div>
+    <div class="ucard" id="uc2">
+      <input type="file" id="f2" accept=".xlsx,.xls" onchange="onFile(2,this)">
+      <div class="ucard-icon">🚚</div>
+      <h3>Movement File</h3>
+      <p>Full_Dispatch / Outbound</p>
+      <div class="fname" id="fn2"></div>
+    </div>
+  </div>
+
+  <button class="btn-go" id="btn-go" onclick="run()">▶&nbsp; Analyze & Build Dashboard</button>
+  <div class="credit">Prepared by: Dr. Yazeed Alsomair | QHSE Supervisor</div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dash">
+  <div class="dh">
+    <div>
+      <div class="dh-title">⬡ Non / Slow-Moving Inventory Dashboard</div>
+      <div class="dh-meta" id="dh-meta">—</div>
+    </div>
+    <div class="dh-right">
+      <span class="thresh-badge" id="thresh-show">Threshold: 30d</span>
+      <button class="btn-sm" onclick="reset()">↩ Upload New Files</button>
+    </div>
+  </div>
+
+  <div class="dm">
+
+    <!-- ITEMS KPIS -->
+    <div class="sdiv"><h2>📦 Items Overview</h2></div>
+    <div class="kpi-row">
+      <div class="kpi nm"><div class="kpi-lbl">Non-Moving</div><div class="kpi-val" id="k-nm">—</div><div class="kpi-sub" id="k-nm-q">—</div><div class="kpi-pct" id="k-nm-p">—</div></div>
+      <div class="kpi sm"><div class="kpi-lbl">Slow-Moving</div><div class="kpi-val" id="k-sm">—</div><div class="kpi-sub" id="k-sm-q">—</div><div class="kpi-pct" id="k-sm-p">—</div></div>
+      <div class="kpi ac"><div class="kpi-lbl">Active</div><div class="kpi-val" id="k-ac">—</div><div class="kpi-sub" id="k-ac-q">—</div><div class="kpi-pct" id="k-ac-p">—</div></div>
+      <div class="kpi bl"><div class="kpi-lbl">Total Items</div><div class="kpi-val" id="k-tot">—</div><div class="kpi-sub" id="k-tot-q">—</div></div>
+    </div>
+
+    <!-- LOC KPIS -->
+    <div class="sdiv"><h2>📍 Location Overview</h2></div>
+    <div class="kpi-row">
+      <div class="kpi bl"><div class="kpi-lbl">Total Locations</div><div class="kpi-val" id="l-tot">—</div></div>
+      <div class="kpi nm"><div class="kpi-lbl">w/ Non-Moving</div><div class="kpi-val" id="l-nm">—</div><div class="kpi-sub" id="l-nm-p">—</div></div>
+      <div class="kpi sm"><div class="kpi-lbl">w/ Slow-Moving</div><div class="kpi-val" id="l-sm">—</div><div class="kpi-sub" id="l-sm-p">—</div></div>
+      <div class="kpi nm"><div class="kpi-lbl">100% Blocked</div><div class="kpi-val" id="l-blk">—</div><div class="kpi-sub" id="l-blk-p">—</div></div>
+    </div>
+
+    <!-- CHARTS ROW 1 -->
+    <div class="chart-row">
+      <div class="ccard"><div class="ctitle"><i style="background:var(--blue)"></i>Items Distribution</div><div class="cwrap" style="height:220px"><canvas id="c-donut"></canvas></div></div>
+      <div class="ccard"><div class="ctitle"><i style="background:var(--sm)"></i>By Aging Profile</div><div class="cwrap" style="height:220px"><canvas id="c-aging"></canvas></div></div>
+    </div>
+    <!-- CHARTS ROW 2 -->
+    <div class="chart-row">
+      <div class="ccard"><div class="ctitle"><i style="background:var(--nm)"></i>Top Custody — Non-Moving</div><div class="cwrap" style="height:220px"><canvas id="c-cust"></canvas></div></div>
+      <div class="ccard"><div class="ctitle"><i style="background:var(--ac)"></i>Location Blockage by Aging Profile</div><div class="cwrap" style="height:220px"><canvas id="c-locag"></canvas></div></div>
+    </div>
+
+    <!-- ITEMS TABLE -->
+    <div class="sdiv"><h2>📋 Items Detail</h2></div>
+    <div>
+      <div class="tbar">
+        <div class="tbtn-group">
+          <button class="tbtn nm on" id="tb-nm" onclick="fItems('Non-Moving',this)">🔴 Non-Moving</button>
+          <button class="tbtn sm" id="tb-sm" onclick="fItems('Slow-Moving',this)">🟡 Slow-Moving</button>
+          <button class="tbtn ac" id="tb-ac" onclick="fItems('Active',this)">🟢 Active</button>
+          <button class="tbtn" id="tb-all" onclick="fItems('All',this)">All</button>
+        </div>
+        <input class="srch" id="srch-i" type="text" placeholder="🔍 Search…" oninput="fItems(_iCat,null)">
+      </div>
+      <div class="twrap">
+        <table><thead><tr>
+          <th>Category</th><th>Item No.</th><th>Description</th><th>UOM</th>
+          <th>Total Qty</th><th>Avail Qty</th><th>Dispatched</th><th>Last Movement</th><th>Days</th>
+          <th>Custody</th><th>Aging Profile</th><th>Inv. Status</th>
+        </tr></thead><tbody id="tbody-i"></tbody></table>
+      </div>
+      <div class="pgn" id="pgn-i"></div>
+    </div>
+
+    <!-- LOCATION TABLE -->
+    <div class="sdiv"><h2>📍 Location Detail</h2></div>
+    <div>
+      <div class="tbar">
+        <div class="tbtn-group">
+          <button class="tbtn nm on" id="lb-hi" onclick="fLoc('high',this)">🔴 ≥75% Blocked</button>
+          <button class="tbtn sm" id="lb-mid" onclick="fLoc('mid',this)">🟡 25–74%</button>
+          <button class="tbtn ac" id="lb-lo" onclick="fLoc('low',this)">🟢 &lt;25%</button>
+          <button class="tbtn" id="lb-all" onclick="fLoc('all',this)">All</button>
+        </div>
+        <input class="srch" id="srch-l" type="text" placeholder="🔍 Search location…" oninput="fLoc(_lCat,null)">
+      </div>
+      <div class="twrap">
+        <table><thead><tr>
+          <th>Location</th><th>Custody</th><th>Aging Profile</th>
+          <th>Total</th><th>Non-Moving</th><th>Slow-Moving</th><th>Active</th><th>Total Qty</th>
+          <th>NM%</th><th>SM%</th><th>NM+SM%</th>
+        </tr></thead><tbody id="tbody-l"></tbody></table>
+      </div>
+      <div class="pgn" id="pgn-l"></div>
+    </div>
+
+  </div><!-- /dm -->
+  <div class="df">
+    <span>⬡ Non / Slow-Moving Dashboard</span>
+    <span>Prepared by: Dr. Yazeed Alsomair | QHSE Supervisor</span>
+    <span id="df-date">—</span>
+  </div>
+</div><!-- /dash -->
+
+<script>
+/* ───────────── STATE ───────────── */
+let _f1,_f2,_r1=false,_r2=false;
+let _items=[],_locs=[];
+let _fi=[],_fl=[];
+let _ip=1,_lp=1;
+const PS=15;
+let _iCat='Non-Moving',_lCat='high';
+let _charts={};
+
+/* ───────────── FILE UPLOAD ───────────── */
+function onFile(n,el){
+  const f=el.files[0]; if(!f)return;
+  if(n===1){_f1=f;_r1=true;document.getElementById('fn1').textContent=f.name;document.getElementById('uc1').classList.add('done')}
+  else{_f2=f;_r2=true;document.getElementById('fn2').textContent=f.name;document.getElementById('uc2').classList.add('done')}
+  if(_r1&&_r2)document.getElementById('btn-go').classList.add('on');
+}
+
+function readWB(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=e=>{try{res(XLSX.read(e.target.result,{type:'array',cellDates:true}))}catch(e){rej(e)}};
+    r.readAsArrayBuffer(file);
+  });
+}
+
+function wb2rows(wb, headerKw){
+  // find best sheet and header row
+  let bestSheet=null, bestScore=-1;
+  wb.SheetNames.forEach(sn=>{
+    const s=wb.Sheets[sn];
+    const ref=s['!ref'];
+    if(!ref)return;
+    const range=XLSX.utils.decode_range(ref);
+    const score=(range.e.r-range.s.r)*(range.e.c-range.s.c);
+    if(score>bestScore){bestScore=score;bestSheet=s;}
+  });
+  const ws=bestSheet||wb.Sheets[wb.SheetNames[0]];
+  const ref=ws['!ref']; if(!ref)return[];
+  const range=XLSX.utils.decode_range(ref);
+  let hrow=range.s.r;
+  outer:for(let R=range.s.r;R<=Math.min(range.e.r,20);R++){
+    for(let C=range.s.c;C<=range.e.c;C++){
+      const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];
+      if(cell&&String(cell.v||'').toLowerCase().includes(headerKw.toLowerCase())){hrow=R;break outer;}
+    }
+  }
+  return XLSX.utils.sheet_to_json(ws,{defval:'',raw:false,range:hrow});
+}
+
+/* ───────────── DETECT DATE COLUMN ───────────── */
+function detectDateCol(rows){
+  const candidates=['Date Of Creation','Confirm Date','Pick Date','Dispatch Date','date','Date'];
+  for(const c of candidates){
+    if(rows.length&&rows[0].hasOwnProperty(c))return c;
+  }
+  // fallback: find first column with date-like values
+  if(!rows.length)return null;
+  for(const key of Object.keys(rows[0])){
+    const sample=rows.slice(0,10).map(r=>r[key]).filter(v=>v&&String(v).match(/\d{4}[-/]\d{2}[-/]\d{2}|\d{2}[-/]\d{2}[-/]\d{4}/));
+    if(sample.length>=3)return key;
+  }
+  return null;
+}
+
+/* ───────────── DETECT ITEM NUMBER COL ───────────── */
+function detectItemCol(rows,prefer){
+  const candidates=['Generic Item Number','Item Number','ItemNo','Item No','ITEM_NO','item_number'];
+  for(const c of [prefer,...candidates]){
+    if(c&&rows.length&&rows[0].hasOwnProperty(c))return c;
+  }
+  return Object.keys(rows[0]||{})[0];
+}
+
+/* ───────────── DETECT STATUS COL (for filtering dispatched) ───────────── */
+function detectStatusCol(rows){
+  const candidates=['Order Line Status','Status','status','order status'];
+  for(const c of candidates){
+    if(rows.length&&rows[0].hasOwnProperty(c))return c;
+  }
+  return null;
+}
+
+/* ───────────── DETECT QTY COL ───────────── */
+function detectQtyCol(rows){
+  const candidates=['Pick Qty','Qty','qty','Quantity','quantity','Total Qty','Avail Qty'];
+  for(const c of candidates){
+    if(rows.length&&rows[0].hasOwnProperty(c))return c;
+  }
+  return null;
+}
+
+/* ───────────── MAIN ANALYSIS ───────────── */
+async function run(){
+  showLoader('Reading stock file…');
+  await tick();
+  try{
+    const thresh=parseInt(document.getElementById('thresh-slider').value);
+    document.getElementById('thresh-show').textContent='Threshold: '+thresh+'d';
+
+    // Read stock
+    const wb1=await readWB(_f1);
+    const stockRows=wb2rows(wb1,'Generic Item');
+    const stockItemCol=detectItemCol(stockRows,'Generic Item Number');
+
+    // Read movement
+    const wb2=await readWB(_f2);
+    showLoader('Reading movement file…');await tick();
+    const movRows=wb2rows(wb2,'Generic Item');
+    const movItemCol=detectItemCol(movRows,'Generic Item Number');
+    const dateCol=detectDateCol(movRows);
+    const statusCol=detectStatusCol(movRows);
+    const qtyCol=detectQtyCol(movRows);
+
+    // Filter dispatched if status col exists
+    let movFiltered=movRows;
+    if(statusCol){
+      movFiltered=movRows.filter(r=>{
+        const s=String(r[statusCol]||'').toLowerCase();
+        return s.includes('dispatch')||s.includes('confirm')||s.includes('complete')||s.includes('done')||s==='';
+      });
+      if(movFiltered.length===0)movFiltered=movRows; // fallback: use all
+    }
+
+    showLoader('Analyzing items…');await tick();
+
+    // Aggregate movement by item
+    const movMap={};
+    movFiltered.forEach(r=>{
+      const id=String(r[movItemCol]||'').trim();
+      if(!id)return;
+      const dateRaw=r[dateCol]||'';
+      let d=null;
+      if(dateRaw){
+        d=dateRaw instanceof Date?dateRaw:new Date(dateRaw);
+        if(isNaN(d))d=null;
+      }
+      const qty=parseFloat(String(r[qtyCol]||'').replace(/,/g,''))||0;
+      if(!movMap[id])movMap[id]={totalDispatched:0,count:0,lastDate:null};
+      movMap[id].totalDispatched+=qty;
+      movMap[id].count++;
+      if(d&&(!movMap[id].lastDate||d>movMap[id].lastDate))movMap[id].lastDate=d;
+    });
+
+    const today=new Date();
+    const threshMs=thresh*86400000;
+
+    // Aggregate stock by item
+    const stockMap={};
+    stockRows.forEach(r=>{
+      const id=String(r[stockItemCol]||'').trim();
+      if(!id||id==='Prepared by: Dr. Yazeed Alsomair | QHSE Supervisor')return;
+      if(!stockMap[id]){
+        stockMap[id]={
+          itemNo:id,
+          desc:r['Generic Item description']||r['Trade Item Description']||r['Description']||'',
+          uom:r['UOM']||r['Unit']||'',
+          totalQty:0,availQty:0,
+          agingProfile:r['Aging profile']||r['Aging Profile']||'',
+          custody:r['Custody']||'',
+          invStatus:r['Inv Status']||r['Inv. Status']||'',
+          supplier:r['Supplier Name']||r['Supplier']||'',
+          location:r['Location']||'',
+          bbd:r['BBD']||'',
+        };
+      }
+      stockMap[id].totalQty+=parseFloat(String(r['Total Qty']||r['Qty']||'0').replace(/,/g,''))||0;
+      stockMap[id].availQty+=parseFloat(String(r['Avail Qty']||'0').replace(/,/g,''))||0;
+    });
+
+    // Build items array
+    _items=Object.values(stockMap).map(s=>{
+      const m=movMap[s.itemNo]||{totalDispatched:0,count:0,lastDate:null};
+      let cat,daysSince=null;
+      if(m.totalDispatched===0&&m.count===0){cat='Non-Moving';}
+      else{
+        daysSince=m.lastDate?Math.round((today-m.lastDate)/86400000):null;
+        cat=(daysSince===null||daysSince>thresh)?'Slow-Moving':'Active';
+      }
+      return{...s,totalDispatched:m.totalDispatched,dispatchCount:m.count,lastDate:m.lastDate,daysSince,cat};
+    });
+
+    // Build location map from stock file
+    const locMap={};
+    stockRows.forEach(r=>{
+      const id=String(r[stockItemCol]||'').trim();
+      const loc=String(r['Location']||'').trim();
+      if(!loc||loc===''||loc==='Prepared by: Dr. Yazeed Alsomair | QHSE Supervisor')return;
+      const qty=parseFloat(String(r['Total Qty']||'0').replace(/,/g,''))||0;
+      const itm=_items.find(i=>i.itemNo===id);
+      const cat=itm?itm.cat:'Non-Moving';
+      if(!locMap[loc])locMap[loc]={loc,custody:r['Custody']||'',aging:r['Aging profile']||r['Aging Profile']||'',nm:0,sm:0,ac:0,qty:0};
+      locMap[loc].qty+=qty;
+      if(cat==='Non-Moving')locMap[loc].nm++;
+      else if(cat==='Slow-Moving')locMap[loc].sm++;
+      else locMap[loc].ac++;
+    });
+
+    _locs=Object.values(locMap).map(l=>{
+      const tot=l.nm+l.sm+l.ac;
+      return{...l,total:tot,nmPct:tot?+(l.nm/tot*100).toFixed(1):0,smPct:tot?+(l.sm/tot*100).toFixed(1):0,nmsmPct:tot?+((l.nm+l.sm)/tot*100).toFixed(1):0};
+    }).sort((a,b)=>b.nmsmPct-a.nmsmPct);
+
+    showLoader('Building dashboard…');await tick();
+    renderAll(thresh);
+
+    document.getElementById('upload-screen').classList.add('out');
+    document.getElementById('dash').classList.add('on');
+    document.getElementById('dh-meta').textContent=`Stock: ${Object.keys(stockMap).length} items | Movement: ${movFiltered.length} records | Date col: "${dateCol||'?'}" | Threshold: ${thresh}d`;
+    document.getElementById('df-date').textContent='Generated: '+today.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+
+  }catch(e){
+    alert('Error processing files:\n'+e.message);
+    console.error(e);
+  }
+  hideLoader();
+}
+
+function tick(){return new Promise(r=>setTimeout(r,30));}
+function showLoader(msg){document.getElementById('loader').classList.add('on');document.getElementById('loader-msg').textContent=msg;}
+function hideLoader(){document.getElementById('loader').classList.remove('on');}
+
+/* ───────────── RENDER ───────────── */
+function n(v){return parseFloat(String(v).replace(/,/g,''))||0;}
+function fmt(v){return n(v).toLocaleString();}
+function fmtD(d){return d?d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'';}
+
+function renderAll(thresh){
+  const nm=_items.filter(i=>i.cat==='Non-Moving');
+  const sm=_items.filter(i=>i.cat==='Slow-Moving');
+  const ac=_items.filter(i=>i.cat==='Active');
+  const tot=_items.length;
+
+  // Item KPIs
+  const nmQ=nm.reduce((s,i)=>s+i.totalQty,0);
+  const smQ=sm.reduce((s,i)=>s+i.totalQty,0);
+  const acQ=ac.reduce((s,i)=>s+i.totalQty,0);
+
+  set('k-nm',nm.length); set('k-nm-q','Qty: '+fmt(nmQ)); set('k-nm-p',(nm.length/tot*100).toFixed(1)+'%');
+  set('k-sm',sm.length); set('k-sm-q','Qty: '+fmt(smQ)); set('k-sm-p',(sm.length/tot*100).toFixed(1)+'%');
+  set('k-ac',ac.length); set('k-ac-q','Qty: '+fmt(acQ)); set('k-ac-p',(ac.length/tot*100).toFixed(1)+'%');
+  set('k-tot',tot);      set('k-tot-q','Qty: '+fmt(nmQ+smQ+acQ));
+
+  // Location KPIs
+  const ltot=_locs.length;
+  const lnm=_locs.filter(l=>l.nm>0).length;
+  const lsm=_locs.filter(l=>l.sm>0).length;
+  const lblk=_locs.filter(l=>l.nmsmPct>=100).length;
+  set('l-tot',ltot); set('l-nm',lnm); set('l-nm-p',(lnm/ltot*100).toFixed(1)+'% of locations');
+  set('l-sm',lsm);   set('l-sm-p',(lsm/ltot*100).toFixed(1)+'% of locations');
+  set('l-blk',lblk); set('l-blk-p',(lblk/ltot*100).toFixed(1)+'% of locations');
+
+  buildCharts(nm,sm,ac);
+  fItems('Non-Moving',document.getElementById('tb-nm'));
+  fLoc('high',document.getElementById('lb-hi'));
+}
+
+function set(id,v){const el=document.getElementById(id);if(el)el.textContent=v;}
+
+/* ───────────── CHARTS ───────────── */
+function mkChart(id,cfg){if(_charts[id])_charts[id].destroy();_charts[id]=new Chart(document.getElementById(id),cfg);}
+Chart.defaults.color='#94a3b8';Chart.defaults.font.family='Sora';
+
+function buildCharts(nm,sm,ac){
+  // Donut
+  mkChart('c-donut',{type:'doughnut',
+    data:{labels:['Non-Moving','Slow-Moving','Active'],
+          datasets:[{data:[nm.length,sm.length,ac.length],
+            backgroundColor:['rgba(239,68,68,.85)','rgba(245,158,11,.85)','rgba(16,185,129,.85)'],
+            borderColor:['#0a0e1a'],borderWidth:3,hoverOffset:8}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'right',labels:{boxWidth:11,padding:14,font:{size:10}}},
+               tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw} (${(c.raw/_items.length*100).toFixed(1)}%)`}}}}
+  });
+
+  // Aging
+  const agM={};
+  _items.forEach(i=>{const a=i.agingProfile||'Other';if(!agM[a])agM[a]={nm:0,sm:0,ac:0};agM[a][i.cat==='Non-Moving'?'nm':i.cat==='Slow-Moving'?'sm':'ac']++;});
+  const agL=Object.keys(agM).filter(k=>k&&!k.includes('Prepared'));
+  mkChart('c-aging',{type:'bar',
+    data:{labels:agL,datasets:[
+      {label:'Non-Moving',data:agL.map(k=>agM[k].nm),backgroundColor:'rgba(239,68,68,.8)',borderRadius:4},
+      {label:'Slow-Moving',data:agL.map(k=>agM[k].sm),backgroundColor:'rgba(245,158,11,.8)',borderRadius:4},
+      {label:'Active',data:agL.map(k=>agM[k].ac),backgroundColor:'rgba(16,185,129,.8)',borderRadius:4},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      scales:{x:{stacked:true,grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:9}}},y:{stacked:true,grid:{color:'rgba(255,255,255,.04)'}}},
+      plugins:{legend:{labels:{font:{size:9},boxWidth:9,padding:10}}}}
+  });
+
+  // Top Custody NM
+  const cM={};
+  nm.forEach(i=>{const c=i.custody||'Unknown';cM[c]=(cM[c]||0)+1;});
+  const top=Object.entries(cM).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  mkChart('c-cust',{type:'bar',
+    data:{labels:top.map(x=>x[0].length>22?x[0].slice(0,20)+'…':x[0]),
+          datasets:[{data:top.map(x=>x[1]),backgroundColor:'rgba(239,68,68,.75)',borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{grid:{color:'rgba(255,255,255,.04)'}},y:{grid:{display:false},ticks:{font:{size:9}}}}}
+  });
+
+  // Location blockage by aging
+  const laM={};
+  _locs.forEach(l=>{const a=l.aging||'Other';if(!laM[a])laM[a]={nm:0,sm:0};if(l.nm>0)laM[a].nm++;if(l.sm>0)laM[a].sm++;});
+  const laL=Object.keys(laM).filter(k=>k&&k!=='');
+  mkChart('c-locag',{type:'bar',
+    data:{labels:laL,datasets:[
+      {label:'Locations w/ NM',data:laL.map(k=>laM[k].nm),backgroundColor:'rgba(239,68,68,.8)',borderRadius:4},
+      {label:'Locations w/ SM',data:laL.map(k=>laM[k].sm),backgroundColor:'rgba(245,158,11,.8)',borderRadius:4},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'}}},
+      plugins:{legend:{labels:{font:{size:9},boxWidth:9,padding:10}}}}
+  });
+}
+
+/* ───────────── ITEMS TABLE ───────────── */
+function fItems(cat,btn){
+  _iCat=cat;
+  document.querySelectorAll('#tb-nm,#tb-sm,#tb-ac,#tb-all').forEach(b=>b.classList.remove('on'));
+  if(btn)btn.classList.add('on');
+  const s=document.getElementById('srch-i').value.toLowerCase();
+  _fi=cat==='All'?[..._items]:_items.filter(i=>i.cat===cat);
+  if(s)_fi=_fi.filter(i=>(i.desc||'').toLowerCase().includes(s)||String(i.itemNo).includes(s));
+  _ip=1;renderIT();
+}
+function renderIT(){
+  const start=(_ip-1)*PS,page=_fi.slice(start,start+PS);
+  document.getElementById('tbody-i').innerHTML=page.map(i=>{
+    const bc=i.cat==='Non-Moving'?'b-nm':i.cat==='Slow-Moving'?'b-sm':'b-ac';
+    const dc=i.daysSince!==null?(i.daysSince>90?'var(--nm)':i.daysSince>30?'var(--sm)':'var(--ac)'):'var(--muted)';
+    const statusC=(i.invStatus||'').includes('Expired')?'color:var(--nm)':'color:var(--muted)';
+    return`<tr>
+      <td><span class="badge ${bc}">${i.cat}</span></td>
+      <td style="font-family:'JetBrains Mono';font-size:.65rem">${i.itemNo}</td>
+      <td title="${i.desc}">${i.desc.slice(0,32)}${i.desc.length>32?'…':''}</td>
+      <td>${i.uom}</td>
+      <td style="font-family:'JetBrains Mono'">${fmt(i.totalQty)}</td>
+      <td style="font-family:'JetBrains Mono'">${fmt(i.availQty)}</td>
+      <td style="font-family:'JetBrains Mono'">${fmt(i.totalDispatched)}</td>
+      <td style="font-size:.65rem;color:var(--dim)">${fmtD(i.lastDate)}</td>
+      <td style="font-family:'JetBrains Mono';color:${dc}">${i.daysSince!==null?i.daysSince:'—'}</td>
+      <td>${(i.custody||'').slice(0,18)}</td>
+      <td style="font-size:.65rem;color:var(--dim)">${i.agingProfile}</td>
+      <td style="font-size:.65rem;${statusC}">${i.invStatus}</td>
+    </tr>`;
+  }).join('');
+  pgn('pgn-i',_fi.length,_ip,p=>{_ip=p;renderIT();});
+}
+
+/* ───────────── LOCATION TABLE ───────────── */
+function fLoc(type,btn){
+  _lCat=type;
+  document.querySelectorAll('#lb-hi,#lb-mid,#lb-lo,#lb-all').forEach(b=>b.classList.remove('on'));
+  if(btn)btn.classList.add('on');
+  const s=document.getElementById('srch-l').value.toLowerCase();
+  _fl=_locs.filter(l=>{
+    const p=l.nmsmPct;
+    if(type==='high')return p>=75;
+    if(type==='mid')return p>=25&&p<75;
+    if(type==='low')return p<25;
+    return true;
+  });
+  if(s)_fl=_fl.filter(l=>l.loc.toLowerCase().includes(s));
+  _lp=1;renderLT();
+}
+function renderLT(){
+  const start=(_lp-1)*PS,page=_fl.slice(start,start+PS);
+  document.getElementById('tbody-l').innerHTML=page.map(l=>{
+    const p=l.nmsmPct;
+    const bc=p>=75?'#ef4444':p>=50?'#f59e0b':'#10b981';
+    return`<tr>
+      <td style="font-family:'JetBrains Mono';font-size:.65rem">${l.loc}</td>
+      <td>${(l.custody||'').slice(0,20)}</td>
+      <td style="font-size:.65rem;color:var(--dim)">${l.aging}</td>
+      <td style="font-family:'JetBrains Mono';text-align:center">${l.total}</td>
+      <td style="font-family:'JetBrains Mono';color:var(--nm);text-align:center">${l.nm}</td>
+      <td style="font-family:'JetBrains Mono';color:var(--sm);text-align:center">${l.sm}</td>
+      <td style="font-family:'JetBrains Mono';color:var(--ac);text-align:center">${l.ac}</td>
+      <td style="font-family:'JetBrains Mono';text-align:center">${fmt(l.qty)}</td>
+      <td style="font-family:'JetBrains Mono';color:var(--nm);text-align:center">${l.nmPct}%</td>
+      <td style="font-family:'JetBrains Mono';color:var(--sm);text-align:center">${l.smPct}%</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:5px">
+          <div style="flex:1;background:rgba(255,255,255,.06);border-radius:3px;height:5px">
+            <div style="width:${Math.min(p,100)}%;background:${bc};height:5px;border-radius:3px"></div>
+          </div>
+          <span style="font-family:'JetBrains Mono';font-size:.65rem;color:${bc};min-width:36px">${p}%</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  pgn('pgn-l',_fl.length,_lp,p=>{_lp=p;renderLT();});
+}
+
+/* ───────────── PAGINATION ───────────── */
+function pgn(id,total,cur,cb){
+  const el=document.getElementById(id);
+  const pages=Math.ceil(total/PS);
+  const s=(cur-1)*PS+1,e=Math.min(cur*PS,total);
+  let h=`<span class="pinfo">${s}–${e} of ${total}</span>`;
+  if(cur>1)h+=`<button class="pbtn" onclick="(${cb.toString()})(${cur-1})">←</button>`;
+  const lo=Math.max(1,cur-2),hi=Math.min(pages,cur+2);
+  for(let p=lo;p<=hi;p++)h+=`<button class="pbtn${p===cur?' cur':''}" onclick="(${cb.toString()})(${p})">${p}</button>`;
+  if(cur<pages)h+=`<button class="pbtn" onclick="(${cb.toString()})(${cur+1})">→</button>`;
+  el.innerHTML=h;
+}
+
+/* ───────────── RESET ───────────── */
+function reset(){
+  document.getElementById('upload-screen').classList.remove('out');
+  document.getElementById('dash').classList.remove('on');
+  ['uc1','uc2'].forEach(id=>document.getElementById(id).classList.remove('done'));
+  ['fn1','fn2'].forEach(id=>document.getElementById(id).textContent='');
+  ['f1','f2'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('btn-go').classList.remove('on');
+  _r1=_r2=false;_items=[];_locs=[];
+  Object.values(_charts).forEach(c=>c.destroy());_charts={};
+}
+</script>
+</body>
+</html>
